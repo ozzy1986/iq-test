@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.db
+node_modules/
+web/dist/
+.env
+.env.*
+!.env.example
+deploy/.env
+.claude/
+.idea/
+.vscode/
+*.log
