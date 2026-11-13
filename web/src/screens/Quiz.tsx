@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { api, type SessionState } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { api, sleep, type SessionState } from '../api'
 import { FigCell, OptionBody } from '../Figure'
+import { Status, useTitle } from '../ui'
 
 const STEPS = ['Проверяем ответы', 'Считаем баллы по четырём навыкам', 'Собираем отчёт']
+const KEYS = ['1234', 'abcd', 'фисв'] // цифры и буквы A–D в обеих раскладках
 
 export default function Quiz({ state, onFinished }: { state: SessionState; onFinished: (s: SessionState) => void }) {
   const { questions } = state
@@ -14,16 +16,28 @@ export default function Quiz({ state, onFinished }: { state: SessionState; onFin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
+  const heading = useRef<HTMLHeadingElement>(null)
+  const mounted = useRef(false)
 
   const q = questions[index]
   const last = index === questions.length - 1
   const chosen = answers[q.id]
+  useTitle(`Вопрос ${index + 1} из ${questions.length}`)
+
+  // При смене вопроса переводим фокус на формулировку: скринридер читает новый вопрос,
+  // а клавиатурный фокус не остаётся на исчезнувшей кнопке.
+  useEffect(() => {
+    if (mounted.current) heading.current?.focus({ preventScroll: true })
+    mounted.current = true
+    scrollTo(0, 0)
+  }, [index])
 
   const finish = async () => {
+    setAnalyzing(true)
     setBusy(true)
     setError('')
     try {
-      const [next] = await Promise.all([api.finish(state.id), new Promise((r) => setTimeout(r, 2600))])
+      const [next] = await Promise.all([api.finish(state.id), sleep(2600)])
       onFinished(next)
     } catch (e) {
       setAnalyzing(false)
@@ -40,18 +54,29 @@ export default function Quiz({ state, onFinished }: { state: SessionState; onFin
     setAnswers(next)
     try {
       await api.answer(state.id, q.id, option)
-      await new Promise((r) => setTimeout(r, 220)) // дать увидеть выбранный вариант
+      await sleep(220) // дать увидеть выбранный вариант
       if (!last) setIndex(index + 1)
-      else if (questions.every((x) => x.id in next)) {
-        setAnalyzing(true)
-        return finish()
-      }
+      else if (questions.every((x) => x.id in next)) return finish()
     } catch (e) {
       setAnswers(answers)
       setError((e as Error).message)
     }
     setBusy(false)
   }
+
+  // Клавиши 1–4 и A–D на десктопе.
+  const chooseRef = useRef(choose)
+  chooseRef.current = choose
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const key = e.key.toLowerCase()
+      const option = KEYS.map((row) => row.indexOf(key)).find((i) => i >= 0)
+      if (option !== undefined) chooseRef.current(option)
+    }
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  }, [])
 
   if (analyzing) return <Analyzing />
 
@@ -60,37 +85,39 @@ export default function Quiz({ state, onFinished }: { state: SessionState; onFin
     <main className="screen quiz">
       <div className="progress-row">
         <button className="link-btn" onClick={() => setIndex(index - 1)} disabled={index === 0 || busy}>← Назад</button>
-        <span className="muted">{index + 1} из {questions.length}</span>
+        <span className="muted" aria-live="polite">Вопрос {index + 1} из {questions.length}</span>
       </div>
-      <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={index}>
+      <div className="progress" role="progressbar" aria-label="Прогресс теста" aria-valuemin={0}
+        aria-valuemax={questions.length} aria-valuenow={index}>
         <div style={{ width: `${(index / questions.length) * 100}%` }} />
       </div>
 
       <div className="question" key={q.id}>
-        <p className="tag">{q.category}</p>
-        <h1 className="prompt">{q.prompt}</h1>
+        <p className="chip chip-accent">{q.category}</p>
+        <h1 className="prompt" ref={heading} tabIndex={-1}>{q.prompt}</h1>
         {q.series && <p className="series">{q.series}</p>}
         {q.figure && (
-          <div className="matrix" style={{ gridTemplateColumns: `repeat(${q.figure.cols}, 1fr)`, maxWidth: q.figure.cols * 84 }}>
+          <div className="matrix" role="img" aria-label="Ряд фигур с пропуском"
+            style={{ gridTemplateColumns: `repeat(${q.figure.cols}, 1fr)`, maxWidth: q.figure.cols * 88 }}>
             {q.figure.cells.map((cell, i) => <FigCell key={i} fig={cell} />)}
           </div>
         )}
-        <div className={visual ? 'options options-visual' : 'options'}>
+        <div className={visual ? 'options options-visual' : 'options'} role="group" aria-label="Варианты ответа">
           {q.options.map((option, i) => (
             <button key={i} className={'option' + (chosen === i ? ' selected' : '')} onClick={() => choose(i)}
-              aria-pressed={chosen === i} disabled={busy}>
-              <i>{'ABCD'[i]}</i>
+              aria-pressed={chosen === i} aria-label={option.fig ? `Вариант ${'ABCD'[i]}` : undefined} disabled={busy}>
+              <i aria-hidden="true">{'ABCD'[i]}</i>
               <OptionBody option={option} />
             </button>
           ))}
         </div>
       </div>
 
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <p className="alert-error" role="alert">{error}</p>}
       {chosen !== undefined && !busy && (
         last
-          ? <button className="btn" onClick={() => { setAnalyzing(true); finish() }}>Завершить тест</button>
-          : <button className="btn btn-ghost" onClick={() => setIndex(index + 1)}>Далее →</button>
+          ? <button className="btn btn-primary btn-lg" onClick={finish}>Завершить тест</button>
+          : <button className="btn btn-ghost btn-lg" onClick={() => setIndex(index + 1)}>Далее →</button>
       )}
     </main>
   )
@@ -98,19 +125,20 @@ export default function Quiz({ state, onFinished }: { state: SessionState; onFin
 
 function Analyzing() {
   const [step, setStep] = useState(0)
+  useTitle('Тест завершён')
   useEffect(() => {
     const t = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 850)
     return () => clearInterval(t)
   }, [])
   return (
-    <main className="screen center">
-      <div className="spinner" />
-      <h1>Тест завершён</h1>
+    <Status>
+      <div className="spinner" aria-hidden="true" />
+      <h1 className="title-page">Тест завершён</h1>
       <ul className="steps">
         {STEPS.map((text, i) => (
           <li key={text} className={i < step ? 'done' : i === step ? 'active' : ''}>{text}</li>
         ))}
       </ul>
-    </main>
+    </Status>
   )
 }

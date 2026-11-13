@@ -5,6 +5,7 @@ import Landing from './screens/Landing'
 import Paywall from './screens/Paywall'
 import Quiz from './screens/Quiz'
 import ResultScreen from './screens/Result'
+import { ErrorBoundary, Status } from './ui'
 
 const ROUTE = /^\/t\/([0-9a-f-]{36})(\/checkout)?\/?$/
 
@@ -12,6 +13,8 @@ export type Nav = (path: string, replace?: boolean) => void
 
 export default function App() {
   const [path, setPath] = useState(location.pathname)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState('')
 
   useEffect(() => {
     const onPop = () => setPath(location.pathname)
@@ -26,15 +29,37 @@ export default function App() {
     scrollTo(0, 0)
   }, [])
 
+  const start = useCallback(async () => {
+    setStarting(true)
+    setStartError('')
+    try {
+      const s = await api.create()
+      saved.set(s.id)
+      nav(`/t/${s.id}`)
+    } catch (e) {
+      setStartError((e as Error).message)
+    }
+    setStarting(false)
+  }, [nav])
+
   const match = path.match(ROUTE)
   return (
     <div className="app">
-      <header className="topbar">
-        <a className="logo" href="/" onClick={(e) => { e.preventDefault(); nav('/') }}>
-          <span className="logo-mark">IQ</span> Тест
-        </a>
+      <header className="site-header">
+        <div className="header-inner">
+          <a className="brand" href="/" onClick={(e) => { e.preventDefault(); nav('/') }}>
+            <span className="brand-mark" aria-hidden="true">IQ</span>Тест
+          </a>
+          {!match && (
+            <button className="btn btn-primary nav-cta" onClick={start} disabled={starting}>Начать тест</button>
+          )}
+        </div>
       </header>
-      {match ? <Flow key={match[1]} id={match[1]} checkout={!!match[2]} nav={nav} /> : <Landing nav={nav} />}
+      <ErrorBoundary key={path}>
+        {match
+          ? <Flow key={match[1]} id={match[1]} checkout={!!match[2]} nav={nav} />
+          : <Landing nav={nav} start={start} starting={starting} error={startError} />}
+      </ErrorBoundary>
     </div>
   )
 }
@@ -55,17 +80,13 @@ function Flow({ id, checkout, nav }: { id: string; checkout: boolean; nav: Nav }
     if (state && checkout && (state.access || state.status !== 'finished')) nav(`/t/${id}`, true)
   }, [state, checkout, id, nav])
 
+  if (error?.status === 404)
+    return <Status title="Тест не найден" text="Ссылка устарела или введена с ошибкой."
+      action={{ label: 'На главную', onClick: () => nav('/') }} />
   if (error)
-    return (
-      <main className="screen center">
-        <h1>{error.status === 404 ? 'Тест не найден' : 'Не удалось загрузить тест'}</h1>
-        <p className="muted">{error.status === 404 ? 'Ссылка устарела или введена с ошибкой.' : error.message}</p>
-        <button className="btn" onClick={() => (error.status === 404 ? nav('/') : location.reload())}>
-          {error.status === 404 ? 'На главную' : 'Повторить'}
-        </button>
-      </main>
-    )
-  if (!state) return <main className="screen center"><div className="spinner" aria-label="Загрузка" /></main>
+    return <Status title="Не удалось загрузить тест" text={error.message}
+      action={{ label: 'Повторить', onClick: () => location.reload() }} />
+  if (!state) return <Status />
 
   if (state.status === 'started') return <Quiz state={state} onFinished={setState} />
   if (state.access) return <ResultScreen state={state} onState={setState} nav={nav} />

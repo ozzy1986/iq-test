@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, clock, date, price, saved, type Result, type SessionState } from '../api'
 import type { Nav } from '../App'
 import { OptionBody } from '../Figure'
+import { Status, useTitle } from '../ui'
 
 type Props = { state: SessionState; onState: (s: SessionState) => void; nav: Nav }
 
@@ -13,21 +14,17 @@ export default function ResultScreen({ state, onState, nav }: Props) {
     api.result(state.id).then(setResult).catch((e: Error) => setError(e.message))
   }, [state.id])
 
+  useTitle(result ? `Ваш IQ — ${result.iq}` : 'Ваш результат')
   if (error)
-    return (
-      <main className="screen center">
-        <h1>Не удалось открыть отчёт</h1>
-        <p className="muted">{error}</p>
-        <button className="btn" onClick={() => location.reload()}>Повторить</button>
-      </main>
-    )
-  if (!result) return <main className="screen center"><div className="spinner" aria-label="Загрузка" /></main>
+    return <Status title="Не удалось открыть отчёт" text={error}
+      action={{ label: 'Повторить', onClick: () => location.reload() }} />
+  if (!result) return <Status />
 
   return (
     <main className="screen result">
       <section className="card score">
-        <p className="tag">Ваш результат</p>
-        <div className="iq">{result.iq}</div>
+        <p className="chip chip-accent">Ваш результат</p>
+        <h1 className="iq" aria-label={`Ваш IQ — ${result.iq}`}>{result.iq}</h1>
         <p className="level">{result.level.title}</p>
         <Bell iq={result.iq} />
         <p className="percentile">Выше, чем у <b>{result.percentile}%</b> людей</p>
@@ -80,7 +77,7 @@ export default function ResultScreen({ state, onState, nav }: Props) {
 
       <SubscriptionCard state={state} onState={onState} />
 
-      <button className="btn btn-ghost" onClick={() => { saved.set(null); nav('/') }}>Пройти тест заново</button>
+      <button className="btn btn-ghost btn-lg" onClick={() => { saved.set(null); nav('/') }}>Пройти тест заново</button>
       <p className="fineprint">
         Результат — ориентировочная оценка по короткому тесту. Он не заменяет профессиональную
         психометрическую диагностику.
@@ -126,7 +123,7 @@ function SubscriptionCard({ state, onState }: Pick<Props, 'state' | 'onState'>) 
             ) : (
               <button className="link-btn" onClick={() => setConfirming(true)}>Отменить подписку</button>
             )}
-            {error && <p className="error" role="alert">{error}</p>}
+            {error && <p className="alert-error" role="alert">{error}</p>}
           </>
         ) : (
           <>

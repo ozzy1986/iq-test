@@ -8,7 +8,14 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from app.payments import Charge, get_payment_provider  # noqa: E402
 from app.questions import QUESTIONS  # noqa: E402
+from app.ratelimit import limiter  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fresh_limits():
+    limiter.reset()
 
 
 @pytest.fixture(scope="module")
@@ -81,3 +88,35 @@ def test_unknown_session_and_bad_input(client):
     assert client.put(f"/api/sessions/{sid}/answers/n1", json={"option": 7}).status_code == 422
     assert client.post("/api/events", json={"name": "landing_view"}).status_code == 204
     assert client.get("/api/health").json() == {"status": "ok"}
+
+
+def test_plan_is_public(client):
+    body = client.get("/api/plan").json()
+    assert body["plan"]["amount"] == 29900 and body["questions"] == 12
+
+
+def test_declined_payment_keeps_paywall(client):
+    class Declining:
+        async def charge(self, **_):
+            return Charge(provider="test", succeeded=False)
+
+    sid = start(client)
+    client.post(f"/api/sessions/{sid}/finish")
+    app.dependency_overrides[get_payment_provider] = Declining
+    try:
+        assert client.post(f"/api/sessions/{sid}/checkout", json={"email": "a@b.ru"}).status_code == 402
+    finally:
+        app.dependency_overrides.clear()
+    assert client.get(f"/api/sessions/{sid}").json()["access"] is False
+    assert client.get(f"/api/sessions/{sid}/result").status_code == 402
+
+
+def test_rate_limit_on_session_creation(client):
+    codes = [client.post("/api/sessions").status_code for _ in range(14)]
+    assert codes[:12] == [201] * 12 and codes[12:] == [429, 429]
+    assert "Retry-After" in client.post("/api/sessions").headers
+
+
+def test_oversized_body_is_rejected(client):
+    huge = {"name": "landing_view", "session_id": None, "pad": "x" * 10_000}
+    assert client.post("/api/events", json=huge).status_code == 413

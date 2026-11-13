@@ -13,6 +13,7 @@ export type Question = {
   options: Option[]
   category: string
 }
+export type Plan = { id: string; title: string; amount: number; currency: string; period_days: number }
 export type Subscription = {
   plan: string
   status: 'active' | 'canceled'
@@ -25,7 +26,7 @@ export type SessionState = {
   status: 'started' | 'finished'
   questions: Question[]
   answers: Record<string, number>
-  plan: { id: string; title: string; amount: number; currency: string; period_days: number }
+  plan: Plan
   subscription: Subscription | null
   access: boolean
   email: string | null
@@ -59,6 +60,9 @@ export class ApiError extends Error {
   }
 }
 
+const TIMEOUT_MS = 15_000
+const FALLBACK = 'Что-то пошло не так. Попробуйте ещё раз.'
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response
   try {
@@ -66,19 +70,26 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     })
   } catch {
     throw new ApiError(0, 'Нет соединения. Проверьте интернет и попробуйте ещё раз.')
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null)
-    const detail = typeof data?.detail === 'string' ? data.detail : 'Что-то пошло не так. Попробуйте ещё раз.'
-    throw new ApiError(res.status, detail)
+    throw new ApiError(res.status, typeof data?.detail === 'string' ? data.detail : FALLBACK)
   }
   return res.status === 204 ? (undefined as T) : res.json()
 }
 
+let planRequest: Promise<{ plan: Plan; questions: number }> | undefined
+
 export const api = {
+  /** Тариф запрашивается один раз за визит: цена на всех экранах берётся с сервера. */
+  plan: () => (planRequest ??= request<{ plan: Plan; questions: number }>('GET', '/plan').catch((e) => {
+    planRequest = undefined
+    throw e
+  })),
   create: () => request<SessionState>('POST', '/sessions'),
   get: (id: string) => request<SessionState>('GET', `/sessions/${id}`),
   answer: (id: string, qid: string, option: number) =>
@@ -111,6 +122,8 @@ export const saved = {
   },
 }
 
+export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+export const isEmail = (value: string) => /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(value.trim())
 export const price = (kopecks: number) => `${Math.round(kopecks / 100)} ₽`
 export const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
 export const date = (iso: string) =>

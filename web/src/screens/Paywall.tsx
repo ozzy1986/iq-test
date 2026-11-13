@@ -1,17 +1,19 @@
 import { useEffect } from 'react'
 import { api, clock, price, type SessionState } from '../api'
 import type { Nav } from '../App'
+import { useTitle } from '../ui'
 
 export default function Paywall({ state, nav }: { state: SessionState; nav: Nav }) {
   const { plan } = state
   const preview = state.preview!
+  useTitle('Ваш отчёт готов')
   useEffect(() => api.track('paywall_view', state.id), [state.id])
   const go = () => nav(`/t/${state.id}/checkout`)
 
   return (
     <main className="screen paywall">
-      <p className="tag ok">✓ Анализ завершён</p>
-      <h1>Ваш отчёт готов</h1>
+      <p className="chip chip-ok">✓ Анализ завершён</p>
+      <h1 className="title-page">Ваш отчёт готов</h1>
       <p className="lead">
         Вы ответили на {preview.answered} из {preview.total} вопросов за {clock(preview.duration_sec)}.
         Результат посчитан и сохранён.
@@ -27,7 +29,7 @@ export default function Paywall({ state, nav }: { state: SessionState; nav: Nav 
             </div>
           ))}
         </div>
-        <div className="locked-badge">🔒 Откроется после оплаты</div>
+        <div className="locked-badge"><span className="chip">Откроется после оплаты</span></div>
       </div>
 
       <h2>Что внутри отчёта</h2>
@@ -51,7 +53,7 @@ export default function Paywall({ state, nav }: { state: SessionState; nav: Nav 
       </div>
 
       <div className="sticky-cta">
-        <button className="btn btn-lg" onClick={go}>Открыть результат — {price(plan.amount)}</button>
+        <button className="btn btn-primary btn-lg" onClick={go}>Открыть результат — {price(plan.amount)}</button>
       </div>
     </main>
   )

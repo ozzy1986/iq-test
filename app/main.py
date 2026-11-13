@@ -9,12 +9,15 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import scoring
 from .db import SessionLocal, engine
+from .payments import PaymentProvider, get_payment_provider
+from .ratelimit import limit
 from .models import Base, Event, Payment, Subscription, TestSession, aware, now
 from .questions import BY_ID, CATEGORIES, QUESTIONS, public_questions
 
@@ -32,8 +35,22 @@ async def lifespan(_: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="IQ test MVP", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json",
-              redoc_url=None)
+app = FastAPI(title="IQ test MVP", lifespan=lifespan, docs_url=None, redoc_url=None,
+              openapi_url="/api/openapi.json")
+
+MAX_BODY = 4096  # самое большое легитимное тело — email на оформлении
+
+
+@app.middleware("http")
+async def reject_large_bodies(request, call_next):
+    """Тела запросов крошечные; всё, что больше или без Content-Length, отбрасываем до чтения."""
+    if request.method in ("POST", "PUT", "PATCH"):
+        length = request.headers.get("content-length")
+        if length is None and "transfer-encoding" in request.headers:
+            return JSONResponse({"detail": "Нужен заголовок Content-Length"}, status_code=411)
+        if length is not None and (not length.isdigit() or int(length) > MAX_BODY):
+            return JSONResponse({"detail": "Слишком большой запрос"}, status_code=413)
+    return await call_next(request)
 
 
 async def db():
@@ -110,7 +127,13 @@ async def health(s: AsyncSession = Depends(db)):
     return {"status": "ok"}
 
 
-@app.post("/api/sessions", status_code=201)
+@app.get("/api/plan")
+async def get_plan():
+    """Тариф и размер теста — единственный источник цены для всех экранов."""
+    return {"plan": PLAN, "questions": len(QUESTIONS)}
+
+
+@app.post("/api/sessions", status_code=201, dependencies=[limit("create", 12)])
 async def create_session(s: AsyncSession = Depends(db)):
     ts = TestSession(id=str(uuid.uuid4()), created_at=now(), status="started", answers={})
     s.add(ts)
@@ -129,7 +152,7 @@ class AnswerIn(BaseModel):
     option: int = Field(ge=0, le=9)
 
 
-@app.put("/api/sessions/{session_id}/answers/{question_id}")
+@app.put("/api/sessions/{session_id}/answers/{question_id}", dependencies=[limit("answer", 120)])
 async def put_answer(session_id: str, question_id: str, body: AnswerIn, s: AsyncSession = Depends(db)):
     question = BY_ID.get(question_id)
     if question is None or body.option >= len(question["options"]):
@@ -162,9 +185,10 @@ class CheckoutIn(BaseModel):
     email: str = Field(max_length=254)
 
 
-@app.post("/api/sessions/{session_id}/checkout")
-async def checkout(session_id: str, body: CheckoutIn, s: AsyncSession = Depends(db)):
-    """Имитация оплаты: платёжного провайдера нет, платёж сразу считается успешным."""
+@app.post("/api/sessions/{session_id}/checkout", dependencies=[limit("checkout", 10)])
+async def checkout(session_id: str, body: CheckoutIn, s: AsyncSession = Depends(db),
+                   provider: PaymentProvider = Depends(get_payment_provider)):
+    """Оплата подписки. Провайдер сейчас — имитация (см. payments.py)."""
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
         raise HTTPException(422, "Проверьте адрес почты")
@@ -173,8 +197,14 @@ async def checkout(session_id: str, body: CheckoutIn, s: AsyncSession = Depends(
         raise HTTPException(409, "Сначала завершите тест")
     sub = await subscription_of(ts.id, s)
     if not has_access(sub):  # повторный запрос не создаёт второй платёж
+        charge = await provider.charge(amount=PLAN["amount"], currency=PLAN["currency"], email=email,
+                                       reference=ts.id)
+        s.add(Payment(session_id=ts.id, amount=PLAN["amount"], currency=PLAN["currency"],
+                      provider=charge.provider, status="succeeded" if charge.succeeded else "failed"))
+        if not charge.succeeded:
+            await s.commit()  # неудачную попытку тоже сохраняем
+            raise HTTPException(402, "Платёж не прошёл. Попробуйте ещё раз.")
         period_end = now() + timedelta(days=PLAN["period_days"])
-        s.add(Payment(session_id=ts.id, amount=PLAN["amount"], currency=PLAN["currency"], status="succeeded"))
         if sub is None:
             sub = Subscription(session_id=ts.id, plan=PLAN["id"], status="active", started_at=now(),
                                current_period_end=period_end)
@@ -230,7 +260,7 @@ class EventIn(BaseModel):
     session_id: str | None = Field(default=None, max_length=36)
 
 
-@app.post("/api/events", status_code=204)
+@app.post("/api/events", status_code=204, dependencies=[limit("events", 60)])
 async def post_event(body: EventIn, s: AsyncSession = Depends(db)):
     if body.name in CLIENT_EVENTS and (body.session_id is None or UUID_RE.match(body.session_id)):
         track(s, body.name, body.session_id)
