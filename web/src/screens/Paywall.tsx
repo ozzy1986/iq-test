@@ -6,7 +6,7 @@ import { useTitle } from '../ui'
 type Props = { state: SessionState; onState: (s: SessionState) => void; nav: Nav }
 
 export default function Paywall({ state, onState, nav }: Props) {
-  const { plan } = state
+  const { plan, offer } = state
   const preview = state.preview!
   useTitle('Ваш отчёт готов')
   useEffect(() => api.track('paywall_view', state.id), [state.id])
@@ -47,20 +47,28 @@ export default function Paywall({ state, onState, nav }: Props) {
 
       <div className="card terms">
         <div className="price-row">
-          <span>{plan.title}</span>
-          <b>{price(plan.amount)}</b>
+          <span>{offer.trial ? `Пробный доступ на ${offer.days} дней` : `${plan.title} на ${offer.days} дней`}</span>
+          <b>{price(offer.amount)}</b>
         </div>
+        {offer.trial && (
+          <div className="price-row then">
+            <span>Затем, если не отменить</span>
+            <b>{price(plan.amount)} в месяц</b>
+          </div>
+        )}
         <ul>
-          <li>Это подписка: {price(plan.amount)} раз в {plan.period_days} дней, пока вы её не отмените.</li>
-          <li>Отмена — одной кнопкой на странице результата. Доступ останется до конца оплаченного периода.</li>
-          <li>Никаких пробных периодов за 1 ₽ и скрытых доплат.</li>
+          {offer.trial
+            ? <li>Сегодня спишется {price(offer.amount)}. Через {offer.days} дней подписка продлится автоматически: {price(plan.amount)} раз в {plan.period_days} дней.</li>
+            : <li>Это подписка: {price(plan.amount)} раз в {plan.period_days} дней, пока вы её не отмените.</li>}
+          <li>Отмена — одной кнопкой на странице результата{offer.trial && ', в том числе в пробный период: тогда больше ничего не спишется'}. Доступ останется до конца оплаченного срока.</li>
+          <li>Обе суммы и срок — здесь, а не в мелком шрифте. Других платежей нет.</li>
         </ul>
       </div>
 
       <LeadForm state={state} onState={onState} />
 
       <div className="sticky-cta">
-        <button className="btn btn-primary btn-lg" onClick={go}>Открыть результат — {price(plan.amount)}</button>
+        <button className="btn btn-primary btn-lg" onClick={go}>Открыть результат — {price(offer.amount)}</button>
       </div>
     </main>
   )

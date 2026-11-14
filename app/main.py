@@ -23,7 +23,10 @@ from .models import Base, Event, Payment, Subscription, TestSession, aware, now
 from .payments import PaymentProvider, get_payment_provider
 from .ratelimit import limit
 
-PLAN = {"id": "monthly", "title": "Подписка на месяц", "amount": 29900, "currency": "RUB", "period_days": 30}
+# Первая оплата — пробный период; дальше подписка продлевается по полной цене.
+PLAN = {"id": "monthly", "title": "Подписка", "currency": "RUB", "trial_amount": 2900, "trial_days": 7,
+        "amount": 39900, "period_days": 30}
+TRIAL_MARK = timedelta(days=PLAN["trial_days"] + 1)  # период короче — значит, идёт пробный
 CLIENT_EVENTS = {"landing_view", "paywall_view", "checkout_view"}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -87,10 +90,18 @@ def clean_email(value: str) -> str:
     return email
 
 
+def offer_for(sub: Subscription | None) -> dict:
+    """Что человек заплатит сейчас: пробный период даётся один раз, вернувшимся — сразу полная цена."""
+    if sub is None:
+        return {"trial": True, "amount": PLAN["trial_amount"], "days": PLAN["trial_days"]}
+    return {"trial": False, "amount": PLAN["amount"], "days": PLAN["period_days"]}
+
+
 def sub_view(sub: Subscription | None) -> dict | None:
     if sub is None:
         return None
     return {
+        "trial": aware(sub.current_period_end) - aware(sub.started_at) < TRIAL_MARK,
         "plan": sub.plan,
         "status": sub.status,
         "started_at": aware(sub.started_at).isoformat(),
@@ -111,6 +122,7 @@ def state_view(ts: TestSession, sub: Subscription | None) -> dict:
         "questions": public_questions(ts.questions),
         "answers": ts.answers,
         "plan": PLAN,
+        "offer": offer_for(sub),
         "subscription": sub_view(sub),
         "access": has_access(sub),
         "email": ts.email,
@@ -226,14 +238,15 @@ async def checkout(session_id: str, body: EmailIn, s: AsyncSession = Depends(db)
         raise HTTPException(409, "Сначала завершите тест")
     sub = await subscription_of(ts.profile_id, s)
     if not has_access(sub):  # повторный запрос не создаёт второй платёж
-        charge = await provider.charge(amount=PLAN["amount"], currency=PLAN["currency"], email=email,
+        offer = offer_for(sub)
+        charge = await provider.charge(amount=offer["amount"], currency=PLAN["currency"], email=email,
                                        reference=ts.id)
-        s.add(Payment(session_id=ts.id, amount=PLAN["amount"], currency=PLAN["currency"],
+        s.add(Payment(session_id=ts.id, amount=offer["amount"], currency=PLAN["currency"],
                       provider=charge.provider, status="succeeded" if charge.succeeded else "failed"))
         if not charge.succeeded:
             await s.commit()  # неудачную попытку тоже сохраняем
             raise HTTPException(402, "Платёж не прошёл. Попробуйте ещё раз.")
-        period_end = now() + timedelta(days=PLAN["period_days"])
+        period_end = now() + timedelta(days=offer["days"])
         if sub is None:
             sub = Subscription(profile_id=ts.profile_id, plan=PLAN["id"], status="active", started_at=now(),
                                current_period_end=period_end)

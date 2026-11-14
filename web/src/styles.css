@@ -217,9 +217,12 @@ h1:focus { outline: none; }
   background: var(--ok-soft); color: var(--ok); font-size: 13px; font-weight: 600; display: grid; place-items: center; }
 .price-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .price-row b { font-size: 18px; font-weight: 500; white-space: nowrap; }
+.price-row > :last-child { white-space: nowrap; }
 .price-row.total { border-top: 1px solid var(--border); padding-top: 12px; font-weight: 500; }
 .price-row.total b { font-size: 24px; letter-spacing: -0.02em; }
 .terms .price-row b { font-size: 30px; letter-spacing: -0.03em; }
+.terms .price-row.then { color: var(--text-muted); margin-top: -6px; }
+.terms .price-row.then b { font-size: 17px; letter-spacing: 0; color: var(--text); }
 .terms ul { display: flex; flex-direction: column; gap: 8px; font-size: 15px; color: var(--text-muted); }
 .terms li { padding-left: 16px; position: relative; }
 .terms li::before { content: ''; position: absolute; left: 0; top: 0.65em; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }

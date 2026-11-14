@@ -14,8 +14,17 @@ export type Question = {
   options: Option[]
   category: string
 }
-export type Plan = { id: string; title: string; amount: number; currency: string; period_days: number }
+export type Plan = {
+  id: string
+  title: string
+  currency: string
+  trial_amount: number
+  trial_days: number
+  amount: number
+  period_days: number
+}
 export type Subscription = {
+  trial: boolean
   plan: string
   status: 'active' | 'canceled'
   started_at: string
@@ -29,6 +38,8 @@ export type SessionState = {
   questions: Question[]
   answers: Record<string, number>
   plan: Plan
+  /** Что будет списано сейчас: пробный период для новых, полная цена для вернувшихся. */
+  offer: { trial: boolean; amount: number; days: number }
   subscription: Subscription | null
   access: boolean
   email: string | null

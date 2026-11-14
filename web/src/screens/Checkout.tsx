@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, isEmail, price, sleep, type SessionState } from '../api'
+import { api, date, isEmail, price, sleep, type SessionState } from '../api'
 import type { Nav } from '../App'
 import { Status, useTitle } from '../ui'
 
 export default function Checkout({ state, onPaid, nav }: { state: SessionState; onPaid: (s: SessionState) => void; nav: Nav }) {
-  const { plan } = state
+  const { plan, offer } = state
+  const renewal = date(new Date(Date.now() + offer.days * 864e5).toISOString())
   const [email, setEmail] = useState(state.email ?? '')
   const [stage, setStage] = useState<'form' | 'paying' | 'done'>('form')
   const [error, setError] = useState('')
@@ -43,9 +44,12 @@ export default function Checkout({ state, onPaid, nav }: { state: SessionState; 
       <h1 className="title-page">Оформление подписки</h1>
 
       <div className="card">
-        <div className="price-row"><span>{plan.title}</span><b>{price(plan.amount)}</b></div>
-        <div className="price-row muted"><span>Следующее списание</span><span>через {plan.period_days} дней</span></div>
-        <div className="price-row total"><span>К оплате сегодня</span><b>{price(plan.amount)}</b></div>
+        <div className="price-row">
+          <span>{offer.trial ? `Пробный доступ на ${offer.days} дней` : `${plan.title} на ${offer.days} дней`}</span>
+          <b>{price(offer.amount)}</b>
+        </div>
+        <div className="price-row muted"><span>Следующее списание — {renewal}</span><span>{price(plan.amount)}</span></div>
+        <div className="price-row total"><span>К оплате сегодня</span><b>{price(offer.amount)}</b></div>
       </div>
 
       <form className="form-card" onSubmit={submit} noValidate>
@@ -62,11 +66,13 @@ export default function Checkout({ state, onPaid, nav }: { state: SessionState; 
 
         {error && <p className="alert-error" role="alert">{error}</p>}
         <button className="btn btn-primary btn-lg" type="submit" disabled={stage === 'paying'}>
-          {stage === 'paying' ? 'Проводим платёж…' : `Оплатить ${price(plan.amount)}`}
+          {stage === 'paying' ? 'Проводим платёж…' : `Оплатить ${price(offer.amount)}`}
         </button>
         <p className="fineprint">
-          Подписка продлевается автоматически каждые {plan.period_days} дней. Отменить можно в любой момент
-          на странице результата.
+          {offer.trial
+            ? `Если не отменить подписку до ${renewal}, она продлится за ${price(plan.amount)} в месяц.`
+            : `Подписка продлевается автоматически каждые ${plan.period_days} дней.`}{' '}
+          Отменить можно в любой момент на странице результата.
         </p>
       </form>
     </main>

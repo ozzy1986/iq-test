@@ -46,7 +46,8 @@ export default function Landing({ nav, start, starting, error }: Props) {
           {error && <p className="alert-error" role="alert">{error}</p>}
           <p className="fineprint">
             Тест бесплатный. Подробный отчёт с результатом — по подписке
-            {offer ? ` ${price(offer.plan.amount)} в месяц` : ''}, отмена в один клик.
+            {offer && `: ${offer.plan.trial_days} дней за ${price(offer.plan.trial_amount)}, затем ${price(offer.plan.amount)} в месяц`}.
+            Отмена в один клик.
           </p>
         </div>
       </section>

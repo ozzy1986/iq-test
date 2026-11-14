@@ -68,7 +68,10 @@ def test_full_funnel(client):
     assert client.post(f"/api/sessions/{sid}/checkout", json={"email": "not-an-email"}).status_code == 422
 
     paid = client.post(f"/api/sessions/{sid}/checkout", json={"email": " User@Example.com "}).json()
+    assert finished["offer"] == {"trial": True, "amount": 2900, "days": 7}
     assert paid["access"] is True and paid["subscription"]["status"] == "active"
+    assert paid["subscription"]["trial"] is True  # первая оплата — пробные 7 дней за 29 ₽
+    assert paid["offer"]["trial"] is False  # второй раз пробный период не предлагается
     assert paid["email"] == "user@example.com"
     client.post(f"/api/sessions/{sid}/checkout", json={"email": "user@example.com"})  # идемпотентно
 
@@ -131,7 +134,8 @@ def test_unknown_session_and_bad_input(client):
 
 def test_plan_is_public(client):
     body = client.get("/api/plan").json()
-    assert body["plan"]["amount"] == 29900 and body["questions"] == 30 and body["minutes"] > 0
+    assert body["plan"]["trial_amount"] == 2900 and body["plan"]["trial_days"] == 7
+    assert body["plan"]["amount"] == 39900 and body["questions"] == 30 and body["minutes"] > 0
 
 
 def test_declined_payment_keeps_paywall(client):

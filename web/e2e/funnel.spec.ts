@@ -39,7 +39,7 @@ async function answerFrom(page: Page, first: number, shots?: string) {
 test('воронка: тест → paywall → оплата → результат → повторное прохождение', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Узнайте свой IQ')
-  await expect(page.getByText('299 ₽ в месяц')).toBeVisible() // цена названа до старта
+  await expect(page.getByText('7 дней за 29 ₽, затем 399 ₽ в месяц')).toBeVisible() // обе цены названы до старта
   await expectNoHorizontalScroll(page)
   await expectTouchTargets(page)
 
@@ -64,7 +64,8 @@ test('воронка: тест → paywall → оплата → результа
   // Paywall: отчёт готов, но сам результат не показан.
   await expect(page.getByRole('heading', { name: 'Ваш отчёт готов' })).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('.iq')).toHaveCount(0)
-  await expect(page.getByText('Никаких пробных периодов')).toBeVisible()
+  await expect(page.getByText('Затем, если не отменить')).toBeVisible() // полная цена рядом с пробной
+  await expect(page.getByText('399 ₽ в месяц', { exact: true })).toBeVisible()
   await shot(page, 'paywall')
   await expectNoHorizontalScroll(page)
   await expectTouchTargets(page)
@@ -80,6 +81,8 @@ test('воронка: тест → paywall → оплата → результа
   await page.getByRole('button', { name: /Открыть результат/ }).click()
   await expect(page.getByRole('heading', { name: 'Оформление подписки' })).toBeVisible()
   await expect(page.getByText('Демо-режим.', { exact: true })).toBeVisible()
+  await expect(page.getByText(/Следующее списание — .+/)).toBeVisible()
+  await shot(page, 'checkout')
   await expectNoHorizontalScroll(page)
   await page.getByRole('button', { name: /Оплатить/ }).click()
   await expect(page.getByRole('alert')).toHaveText('Проверьте адрес почты')
@@ -98,6 +101,7 @@ test('воронка: тест → paywall → оплата → результа
   await page.getByText('Вопрос 1', { exact: true }).click()
   await expect(page.locator('.review details[open] .answer.ok')).toBeVisible()
   await expect(page.locator('.history li')).toHaveCount(1)
+  await expect(page.getByText('Пробный период', { exact: true })).toBeVisible()
 
   // Отмена подписки в один клик, доступ сохраняется.
   await page.getByRole('button', { name: 'Отменить подписку' }).click()

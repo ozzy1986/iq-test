@@ -157,11 +157,11 @@ function SubscriptionCard({ state, onState }: Pick<Props, 'state' | 'onState'>) 
       <div className="card">
         {sub.status === 'active' ? (
           <>
-            <div className="price-row"><span>Статус</span><b className="ok-text">Активна</b></div>
+            <div className="price-row"><span>Статус</span><b className="ok-text">{sub.trial ? 'Пробный период' : 'Активна'}</b></div>
             <div className="price-row"><span>Следующее списание</span><span>{date(sub.current_period_end)}, {price(state.plan.amount)}</span></div>
             {confirming ? (
               <div className="confirm">
-                <p>Отменить подписку? Отчёты и новые прохождения останутся доступны до {date(sub.current_period_end)}.</p>
+                <p>Отменить подписку? {sub.trial && `${price(state.plan.amount)} не спишутся. `}Отчёты и новые прохождения останутся доступны до {date(sub.current_period_end)}.</p>
                 <div className="confirm-actions">
                   <button className="btn btn-danger" onClick={cancel} disabled={busy}>{busy ? 'Отменяем…' : 'Да, отменить'}</button>
                   <button className="btn btn-ghost" onClick={() => setConfirming(false)} disabled={busy}>Оставить</button>
