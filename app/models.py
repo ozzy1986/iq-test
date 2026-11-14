@@ -1,7 +1,7 @@
 """Схема данных: прохождение теста, mock-платёж, подписка, события воронки."""
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -64,6 +64,18 @@ class Subscription(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Calibration(Base):
+    """Сложность типа задания, уточнённая по ответам участников (см. calibrate.py)."""
+
+    __tablename__ = "calibration"
+
+    kind: Mapped[str] = mapped_column(String(48), primary_key=True)  # например, «num:3:fib»
+    difficulty: Mapped[float] = mapped_column(Float)
+    responses: Mapped[int] = mapped_column(Integer)
+    pass_rate: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Event(Base):

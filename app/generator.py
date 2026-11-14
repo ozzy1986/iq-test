@@ -27,17 +27,21 @@ MINUTES = 15
 
 
 # ---------- числовые ряды ----------
-def _num_rule(rng: Random, d: int) -> tuple[list[int], str]:
-    """Возвращает ряд (последний элемент — ответ) и пояснение."""
+# Типы рядов по уровням сложности. Имя типа попадает в данные задания — по нему идёт калибровка.
+NUM_KINDS = {1: ["arith", "geom"], 2: ["alt", "grow", "sq"], 3: ["dbl", "fib", "mix"],
+             4: ["rec", "second", "triple"], 5: ["ops", "fact", "trib", "sqd"]}
+
+
+def _num_rule(rng: Random, d: int, kind: str) -> tuple[list[int], str]:
+    """Возвращает ряд заданного типа (последний элемент — ответ) и пояснение."""
     r = rng.randint
     if d == 1:
-        if rng.random() < 0.5:
+        if kind == "arith":
             a, k = r(1, 9), r(2, 9)
             return [a + k * i for i in range(6)], f"Каждое число больше предыдущего на {k}."
         a, q = r(1, 4), rng.choice([2, 3])
         return [a * q**i for i in range(5)], f"Каждое число в {q} раза больше предыдущего."
     if d == 2:
-        kind = rng.choice(["alt", "grow", "sq"])
         if kind == "alt":
             a, up, down = r(5, 15), r(3, 6), r(1, 2)
             seq = [a]
@@ -53,7 +57,6 @@ def _num_rule(rng: Random, d: int) -> tuple[list[int], str]:
         n = r(1, 4)
         return [(n + i) ** 2 for i in range(6)], f"Это квадраты чисел подряд: {n}², {n + 1}², {n + 2}²…"
     if d == 3:
-        kind = rng.choice(["dbl", "fib", "mix"])
         if kind == "dbl":
             a, k = r(1, 5), r(1, 3)
             seq = [a]
@@ -70,7 +73,6 @@ def _num_rule(rng: Random, d: int) -> tuple[list[int], str]:
         return seq, (f"Чередуются два ряда: числа на нечётных местах растут на {p}, на чётных — на {q}. "
                      f"Следующее число — из первого ряда.")
     if d == 4:
-        kind = rng.choice(["rec", "second", "triple"])
         if kind == "rec":
             a, c = r(1, 4), rng.choice([1, 3, -1])
             a = max(a, 2) if c == -1 else a
@@ -89,7 +91,6 @@ def _num_rule(rng: Random, d: int) -> tuple[list[int], str]:
         for _ in range(4):
             seq.append(seq[-1] * 3 - k)
         return seq, f"Каждое число — это предыдущее, умноженное на 3, минус {k}."
-    kind = rng.choice(["ops", "fact", "trib", "sqd"])
     if kind == "ops":
         a, k = r(1, 3), r(2, 4)
         seq = [a]
@@ -114,12 +115,13 @@ def _num_rule(rng: Random, d: int) -> tuple[list[int], str]:
 
 
 def _numeric(rng: Random, d: int) -> dict:
-    seq, explain = _num_rule(rng, d)
+    kind = rng.choice(NUM_KINDS[d])
+    seq, explain = _num_rule(rng, d, kind)
     answer, last_step = seq[-1], seq[-1] - seq[-2]
     wrong = [answer + 1, answer - 1, answer + 2, seq[-2] + (seq[-2] - seq[-3]), answer - 2,
              answer + last_step // 2 or answer + 3, answer + 10, answer - 10, answer + 5]
     options, right = bank._numeric(rng, answer, wrong)
-    return {"prompt": "Какое число продолжает ряд?", "series": ", ".join(map(str, seq[:-1])) + ", ?",
+    return {"kind": kind, "prompt": "Какое число продолжает ряд?", "series": ", ".join(map(str, seq[:-1])) + ", ?",
             "options": [{"text": o} for o in options], "correct": right,
             "explain": f"{explain} Ответ: {answer}."}
 
@@ -183,7 +185,7 @@ def _matrix(rng: Random, d: int) -> dict:
     extra = [{**w, attrs[0]: v} for w in wrong for v in values[attrs[0]] if w[attrs[0]] == answer[attrs[0]]]
     options = _unique(rng, answer, wrong + extra, 6)
     explain = "; ".join(f"{ATTR_NAME[a]} — {RULE_TEXT[rule]}" for a, rule in zip(attrs, rules))
-    return {"prompt": "Какая фигура должна стоять на месте знака вопроса?",
+    return {"kind": "matrix", "prompt": "Какая фигура должна стоять на месте знака вопроса?",
             "figure": {"cols": 3, "cells": cells[:8] + [None]},
             "options": [{"fig": o} for o in options], "correct": options.index(answer),
             "explain": f"Правила: {explain}."}
@@ -204,7 +206,7 @@ def _arrows(rng: Random, d: int) -> dict:
         angles.append((angles[-1] + s) % 360)
     answer = _fig("arrow", rot=angles[-1])
     options = _unique(rng, answer, [_fig("arrow", rot=a) for a in rng.sample(range(0, 360, 45), 8)], 6)
-    return {"prompt": "Стрелка поворачивается по правилу. Какой будет следующая?",
+    return {"kind": "arrows", "prompt": "Стрелка поворачивается по правилу. Какой будет следующая?",
             "figure": {"cols": 5, "cells": [_fig("arrow", rot=a) for a in angles[:4]] + [None]},
             "options": [{"fig": o} for o in options], "correct": options.index(answer), "explain": explain}
 
@@ -226,8 +228,8 @@ def _pattern(rng: Random, d: int, slot: int) -> dict:
 
 
 def _text(rng: Random, d: int, source) -> dict:
-    prompt, options, right, explain = source(rng, d)
-    return {"prompt": prompt, "options": [{"text": o} for o in options], "correct": right, "explain": explain}
+    kind, (prompt, options, right, explain) = source(rng, d)
+    return {"kind": kind, "prompt": prompt, "options": [{"text": o} for o in options], "correct": right, "explain": explain}
 
 
 def build_test(seed: int) -> list[dict]:
@@ -242,7 +244,9 @@ def build_test(seed: int) -> list[dict]:
                 q = _numeric(rng, d)
             else:
                 q = _text(rng, d, bank.logic if cat == "logic" else bank.verbal)
-            questions.append({**q, "cat": cat, "difficulty": d, "_order": rng.random()})
+            # kind — тип задания («num:3:fib»): единица, по которой калибруется сложность.
+            questions.append({**q, "kind": f"{cat}:{d}:{q['kind']}", "cat": cat, "difficulty": d,
+                              "_order": rng.random()})
     questions.sort(key=lambda q: (q["difficulty"], q.pop("_order")))
     for n, q in enumerate(questions, 1):
         q["id"] = f"q{n}"

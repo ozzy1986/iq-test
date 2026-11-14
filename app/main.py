@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import scoring
 from .db import SessionLocal, engine
 from .generator import CATEGORIES, MINUTES, TOTAL, build_test, public_questions
-from .models import Base, Event, Payment, Subscription, TestSession, aware, now
+from .models import Base, Calibration, Event, Payment, Subscription, TestSession, aware, now
 from .payments import PaymentProvider, get_payment_provider
 from .ratelimit import limit
 
@@ -200,7 +200,9 @@ async def finish(session_id: str, s: AsyncSession = Depends(db)):
     if ts.status == "started":
         if len(ts.answers) < len(ts.questions):
             raise HTTPException(409, "Ответьте на все вопросы")
-        result = scoring.score(ts.questions, ts.answers)
+        # Сложности, уточнённые по ответам прошлых участников; для неоткалиброванных типов — экспертные.
+        calibrated = {c.kind: c.difficulty for c in (await s.execute(select(Calibration))).scalars()}
+        result = scoring.score(ts.questions, ts.answers, calibrated)
         ts.status = "finished"
         ts.finished_at = now()
         ts.correct, ts.breakdown = result["correct"], result["breakdown"]

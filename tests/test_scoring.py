@@ -66,7 +66,8 @@ def test_bank_items_are_valid_for_every_difficulty():
         rng = Random(seed)
         for d in range(1, 6):
             for source in (bank.verbal, bank.logic):
-                _, options, right, explain = source(rng, d)
+                kind, (_, options, right, explain) = source(rng, d)
+                assert kind
                 assert len(set(options)) == len(options) >= 4 and 0 <= right < len(options) and explain
 
 

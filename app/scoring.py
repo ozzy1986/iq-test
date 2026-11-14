@@ -6,8 +6,9 @@
 решены, их сложность и вероятность угадать ответ. Берётся апостериорное среднее θ
 при нормальном априорном распределении, IQ = 100 + 15·θ; разброс оценки даёт погрешность.
 
-Чего здесь нет: нормировки на выборке. Сложности заданий заданы экспертно (пять уровней),
-поэтому результат — ориентировочный. Это честно показано в отчёте.
+Сложности заданий изначально заданы экспертно (пять уровней) и уточняются по накопленным
+ответам участников (calibrate.py). Нормировки на представительной выборке нет, поэтому
+результат — ориентировочный. Это честно показано в отчёте.
 """
 import math
 
@@ -45,12 +46,17 @@ def is_correct(question: dict, answers: dict) -> bool:
     return answers.get(question["id"]) == question["correct"]
 
 
-def estimate(questions: list[dict], answers: dict) -> tuple[float, float]:
+def difficulty_of(question: dict, calibrated: dict[str, float] | None) -> float:
+    """Откалиброванная сложность типа задания, а пока данных нет — экспертная по уровню."""
+    return (calibrated or {}).get(question.get("kind"), DIFFICULTY[question["difficulty"]])
+
+
+def estimate(questions: list[dict], answers: dict, calibrated: dict[str, float] | None = None) -> tuple[float, float]:
     """Апостериорные среднее и стандартное отклонение θ. Пропущенный ответ считается неверным."""
     posterior = [math.exp(-t * t / 2) for t in GRID]
     for q in questions:
         guess = 1 / len(q["options"])
-        b, ok = DIFFICULTY[q["difficulty"]], is_correct(q, answers)
+        b, ok = difficulty_of(q, calibrated), is_correct(q, answers)
         for i, t in enumerate(GRID):
             p = guess + (1 - guess) / (1 + math.exp(-DISCRIMINATION * (t - b)))
             posterior[i] *= p if ok else 1 - p
@@ -65,8 +71,8 @@ def percentile_of(iq: int) -> int:
     return min(99, max(1, round(cdf * 100)))
 
 
-def score(questions: list[dict], answers: dict) -> dict:
-    theta, spread = estimate(questions, answers)
+def score(questions: list[dict], answers: dict, calibrated: dict[str, float] | None = None) -> dict:
+    theta, spread = estimate(questions, answers, calibrated)
     iq = round(100 + 15 * theta)
     breakdown = {key: {"correct": 0, "total": 0} for key in CATEGORIES}
     for q in questions:

@@ -39,4 +39,8 @@ if ! cmp -s "$CUR/deploy/iq.service" /etc/systemd/system/iq.service; then
   systemctl daemon-reload
 fi
 systemctl enable iq.service >/dev/null 2>&1 || true
+
+echo '--- cron: ночная калибровка сложности заданий ---'
+echo "17 4 * * * iqapp bash $CUR/deploy/calibrate.sh >> $ROOT/shared/calibrate.log 2>&1" > /etc/cron.d/iq-calibrate
+chmod 644 /etc/cron.d/iq-calibrate
 echo 'setup done'

@@ -50,11 +50,13 @@ VERBAL: list[tuple[int, str, list[str], str, str]] = [
 ]
 
 
-def verbal(rng: Random, difficulty: int) -> Item:
-    _, prompt, options, right, explain = rng.choice([v for v in VERBAL if v[0] == difficulty])
+def verbal(rng: Random, difficulty: int) -> tuple[str, Item]:
+    """Возвращает имя задания (для калибровки) и само задание. Новые задания добавлять в конец банка."""
+    index = rng.choice([i for i, v in enumerate(VERBAL) if v[0] == difficulty])
+    _, prompt, options, right, explain = VERBAL[index]
     options = options[:]
     rng.shuffle(options)
-    return prompt, options, options.index(right), explain
+    return f"v{index}", (prompt, options, options.index(right), explain)
 
 
 # ---- логические ----
@@ -231,5 +233,6 @@ LOGIC = {1: [_order3, _weekday], 2: [_order4, _pen, _day_shift], 3: [_machines, 
          4: [_age, _lilies, _tournament], 5: [_liar, _coins, _snail]}
 
 
-def logic(rng: Random, difficulty: int) -> Item:
-    return rng.choice(LOGIC[difficulty])(rng)
+def logic(rng: Random, difficulty: int) -> tuple[str, Item]:
+    template = rng.choice(LOGIC[difficulty])
+    return template.__name__.lstrip("_"), template(rng)
