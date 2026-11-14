@@ -21,19 +21,25 @@ class Base(DeclarativeBase):
 
 
 class TestSession(Base):
+    """Одно прохождение. Вопросы сгенерированы под него и хранятся целиком, с ответами."""
+
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # Профиль объединяет прохождения одного человека: к нему привязана подписка и история.
+    profile_id: Mapped[str] = mapped_column(String(36), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="started")  # started | finished
+    questions: Mapped[list] = mapped_column(JSON)
     answers: Mapped[dict] = mapped_column(JSON, default=dict)  # {question_id: option_index}
-    score_raw: Mapped[int | None] = mapped_column(Integer)
-    score_max: Mapped[int | None] = mapped_column(Integer)
+    correct: Mapped[int | None] = mapped_column(Integer)
     iq: Mapped[int | None] = mapped_column(Integer)
+    iq_margin: Mapped[int | None] = mapped_column(Integer)
     percentile: Mapped[int | None] = mapped_column(Integer)
     breakdown: Mapped[dict | None] = mapped_column(JSON)
-    email: Mapped[str | None] = mapped_column(String(254))
+    email: Mapped[str | None] = mapped_column(String(254))  # указан при оплате
+    lead_email: Mapped[str | None] = mapped_column(String(254))  # оставлен на paywall без оплаты
 
 
 class Payment(Base):
@@ -45,14 +51,14 @@ class Payment(Base):
     amount: Mapped[int] = mapped_column(Integer)  # в копейках
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
     provider: Mapped[str] = mapped_column(String(16), default="mock")
-    status: Mapped[str] = mapped_column(String(16))  # succeeded
+    status: Mapped[str] = mapped_column(String(16))  # succeeded | failed
 
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), unique=True)
+    profile_id: Mapped[str] = mapped_column(String(36), unique=True)
     plan: Mapped[str] = mapped_column(String(16), default="monthly")
     status: Mapped[str] = mapped_column(String(16))  # active | canceled
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

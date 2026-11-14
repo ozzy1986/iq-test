@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, sleep, type SessionState } from '../api'
-import { FigCell, OptionBody } from '../Figure'
+import { Matrix, OptionBody } from '../Figure'
 import { Status, useTitle } from '../ui'
 
 const STEPS = ['Проверяем ответы', 'Считаем баллы по четырём навыкам', 'Собираем отчёт']
-const KEYS = ['1234', 'abcd', 'фисв'] // цифры и буквы A–D в обеих раскладках
+const LETTERS = 'ABCDEF'
+const KEYS = ['123456', 'abcdef', 'фисвуа'] // цифры и буквы A–F в обеих раскладках
 
 export default function Quiz({ state, onFinished }: { state: SessionState; onFinished: (s: SessionState) => void }) {
   const { questions } = state
@@ -67,12 +68,14 @@ export default function Quiz({ state, onFinished }: { state: SessionState; onFin
   // Клавиши 1–4 и A–D на десктопе.
   const chooseRef = useRef(choose)
   chooseRef.current = choose
+  const optionCount = useRef(0)
+  optionCount.current = q.options.length
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const key = e.key.toLowerCase()
       const option = KEYS.map((row) => row.indexOf(key)).find((i) => i >= 0)
-      if (option !== undefined) chooseRef.current(option)
+      if (option !== undefined && option < optionCount.current) chooseRef.current(option)
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
@@ -96,17 +99,12 @@ export default function Quiz({ state, onFinished }: { state: SessionState; onFin
         <p className="chip chip-accent">{q.category}</p>
         <h1 className="prompt" ref={heading} tabIndex={-1}>{q.prompt}</h1>
         {q.series && <p className="series">{q.series}</p>}
-        {q.figure && (
-          <div className="matrix" role="img" aria-label="Ряд фигур с пропуском"
-            style={{ gridTemplateColumns: `repeat(${q.figure.cols}, 1fr)`, maxWidth: q.figure.cols * 88 }}>
-            {q.figure.cells.map((cell, i) => <FigCell key={i} fig={cell} />)}
-          </div>
-        )}
+        {q.figure && <Matrix figure={q.figure} />}
         <div className={visual ? 'options options-visual' : 'options'} role="group" aria-label="Варианты ответа">
           {q.options.map((option, i) => (
             <button key={i} className={'option' + (chosen === i ? ' selected' : '')} onClick={() => choose(i)}
-              aria-pressed={chosen === i} aria-label={option.fig ? `Вариант ${'ABCD'[i]}` : undefined} disabled={busy}>
-              <i aria-hidden="true">{'ABCD'[i]}</i>
+              aria-pressed={chosen === i} aria-label={option.fig ? `Вариант ${LETTERS[i]}` : undefined} disabled={busy}>
+              <i aria-hidden="true">{LETTERS[i]}</i>
               <OptionBody option={option} />
             </button>
           ))}

@@ -47,7 +47,7 @@ REL=$ROOT/releases/$TS
 echo "--- upload release $TS ---"
 tar czf - \
   --exclude=./.git --exclude=node_modules --exclude=.venv --exclude=venv --exclude=./.claude \
-  --exclude=.env --exclude='.env.*' --exclude=./deploy/.env --exclude='*.db' \
+  --exclude=.env --exclude='.env.*' --exclude=./deploy/.env --exclude='*.db' --exclude=./web/test-results --exclude=./web/e2e \
   --exclude=__pycache__ --exclude=.pytest_cache --exclude='*.log' --exclude=.idea --exclude=.vscode \
   . | ssh "$HOST" "mkdir -p $REL && tar xzf - -C $REL && chown -R $APP_USER:$APP_USER $REL && chmod -R o+rX $REL"
 

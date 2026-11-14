@@ -13,3 +13,5 @@ deploy/.env
 .idea/
 .vscode/
 *.log
+web/test-results/
+web/playwright-report/

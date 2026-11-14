@@ -1,8 +1,9 @@
 export type Fig = {
-  shape: 'circle' | 'square' | 'triangle' | 'arrow'
+  shape: 'circle' | 'square' | 'triangle' | 'diamond' | 'cross' | 'arrow'
   count: number
   fill: 'solid' | 'none' | 'light'
   rot: number
+  size?: number
 }
 export type Option = { text?: string; fig?: Fig }
 export type Question = {
@@ -23,6 +24,7 @@ export type Subscription = {
 }
 export type SessionState = {
   id: string
+  profile_id: string
   status: 'started' | 'finished'
   questions: Question[]
   answers: Record<string, number>
@@ -30,10 +32,13 @@ export type SessionState = {
   subscription: Subscription | null
   access: boolean
   email: string | null
+  lead_email: string | null
   preview?: { duration_sec: number; answered: number; total: number; categories: string[] }
 }
 export type Result = {
   iq: number
+  margin: number
+  history: { id: string; finished_at: string; iq: number; current: boolean }[]
   percentile: number
   level: { title: string; text: string }
   correct: number
@@ -46,6 +51,8 @@ export type Result = {
     category: string
     prompt: string
     series: string | null
+    figure: Question['figure'] | null
+    difficulty: number
     your: Option | null
     right: Option
     is_correct: boolean
@@ -82,19 +89,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.status === 204 ? (undefined as T) : res.json()
 }
 
-let planRequest: Promise<{ plan: Plan; questions: number }> | undefined
+export type Offer = { plan: Plan; questions: number; minutes: number }
+let planRequest: Promise<Offer> | undefined
 
 export const api = {
   /** Тариф запрашивается один раз за визит: цена на всех экранах берётся с сервера. */
-  plan: () => (planRequest ??= request<{ plan: Plan; questions: number }>('GET', '/plan').catch((e) => {
+  plan: () => (planRequest ??= request<Offer>('GET', '/plan').catch((e) => {
     planRequest = undefined
     throw e
   })),
-  create: () => request<SessionState>('POST', '/sessions'),
+  /** Профиль связывает прохождения одного человека: на нём держатся подписка и история. */
+  create: () => request<SessionState>('POST', '/sessions', { profile_id: saved.profile() }),
   get: (id: string) => request<SessionState>('GET', `/sessions/${id}`),
   answer: (id: string, qid: string, option: number) =>
     request<unknown>('PUT', `/sessions/${id}/answers/${qid}`, { option }),
   finish: (id: string) => request<SessionState>('POST', `/sessions/${id}/finish`),
+  lead: (id: string, email: string) => request<SessionState>('POST', `/sessions/${id}/lead`, { email }),
   checkout: (id: string, email: string) => request<SessionState>('POST', `/sessions/${id}/checkout`, { email }),
   cancel: (id: string) => request<SessionState>('POST', `/sessions/${id}/subscription/cancel`),
   result: (id: string) => request<Result>('GET', `/sessions/${id}/result`),
@@ -104,21 +114,30 @@ export const api = {
 }
 
 const KEY = 'iq.session'
+const PROFILE_KEY = 'iq.profile'
+const read = (key: string) => {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null // приватный режим — живём без сохранения
+  }
+}
+const write = (key: string, value: string | null) => {
+  try {
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
+  } catch {
+    /* см. выше */
+  }
+}
 export const saved = {
-  get: () => {
-    try {
-      return localStorage.getItem(KEY)
-    } catch {
-      return null
-    }
-  },
-  set: (id: string | null) => {
-    try {
-      if (id) localStorage.setItem(KEY, id)
-      else localStorage.removeItem(KEY)
-    } catch {
-      /* приватный режим — живём без сохранения */
-    }
+  get: () => read(KEY),
+  set: (id: string | null) => write(KEY, id),
+  profile: () => read(PROFILE_KEY),
+  /** Запоминаем и прохождение, и профиль: открытая на новом устройстве ссылка переносит подписку. */
+  remember: (s: { id: string; profile_id: string }) => {
+    write(KEY, s.id)
+    write(PROFILE_KEY, s.profile_id)
   },
 }
 

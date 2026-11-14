@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { api, clock, date, price, saved, type Result, type SessionState } from '../api'
-import type { Nav } from '../App'
-import { OptionBody } from '../Figure'
+import { api, clock, date, price, type Result, type SessionState } from '../api'
+import { Matrix, OptionBody } from '../Figure'
 import { Status, useTitle } from '../ui'
 
-type Props = { state: SessionState; onState: (s: SessionState) => void; nav: Nav }
+type Props = { state: SessionState; onState: (s: SessionState) => void; retake: () => void; retaking: boolean }
 
-export default function ResultScreen({ state, onState, nav }: Props) {
+export default function ResultScreen({ state, onState, retake, retaking }: Props) {
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState('')
 
@@ -24,7 +23,9 @@ export default function ResultScreen({ state, onState, nav }: Props) {
     <main className="screen result">
       <section className="card score">
         <p className="chip chip-accent">Ваш результат</p>
-        <h1 className="iq" aria-label={`Ваш IQ — ${result.iq}`}>{result.iq}</h1>
+        <h1 className="iq" aria-label={`Ваш IQ — ${result.iq}, погрешность ${result.margin}`}>
+          {result.iq}<small>±{result.margin}</small>
+        </h1>
         <p className="level">{result.level.title}</p>
         <Bell iq={result.iq} />
         <p className="percentile">Выше, чем у <b>{result.percentile}%</b> людей</p>
@@ -33,6 +34,22 @@ export default function ResultScreen({ state, onState, nav }: Props) {
           <li><b>{result.correct}/{result.total}</b><span>верных ответов</span></li>
           <li><b>{clock(result.duration_sec)}</b><span>время</span></li>
         </ul>
+        <details className="method">
+          <summary><span><b>Как посчитан результат</b></span></summary>
+          <p>
+            Шкала стандартная для IQ-тестов: среднее значение 100, стандартное отклонение 15. Около 68% людей
+            получают от 85 до 115.
+          </p>
+          <p>
+            Оценка учитывает не только число верных ответов, но и то, какие именно задания решены: у каждого
+            своя сложность и своя вероятность случайного угадывания (модель IRT, которую используют в
+            современных тестах). Погрешность ±{result.margin} показывает разброс оценки для теста такой длины.
+          </p>
+          <p>
+            Сложность заданий задана экспертно, а не измерена на большой выборке, поэтому результат
+            ориентировочный. Точный IQ определяет только очный тест у психолога.
+          </p>
+        </details>
       </section>
 
       <section>
@@ -55,16 +72,32 @@ export default function ResultScreen({ state, onState, nav }: Props) {
       </section>
 
       <section>
+        <h2>Динамика</h2>
+        <div className="card">
+          <History items={result.history} />
+          <p className="muted">
+            {result.history.length > 1
+              ? 'Каждая попытка — новый набор заданий, поэтому рост результата отражает навык, а не память.'
+              : 'Пройдите тест ещё раз через несколько дней: задания будут новыми, а результат появится на графике.'}
+          </p>
+          <button className="btn btn-primary" onClick={retake} disabled={retaking}>
+            {retaking ? 'Готовим тест…' : 'Пройти ещё раз с новыми заданиями'}
+          </button>
+        </div>
+      </section>
+
+      <section>
         <h2>Разбор вопросов</h2>
         <div className="review">
           {result.review.map((r) => (
             <details key={r.n}>
               <summary>
                 <i className={r.is_correct ? 'mark ok' : 'mark bad'}>{r.is_correct ? '✓' : '✕'}</i>
-                <span><b>Вопрос {r.n}</b><em>{r.category}</em></span>
+                <span><b>Вопрос {r.n}</b><em>{r.category} · сложность {r.difficulty} из 5</em></span>
               </summary>
               <p>{r.prompt}</p>
               {r.series && <p className="series sm">{r.series}</p>}
+              {r.figure && <Matrix figure={r.figure} small />}
               <div className="answers">
                 {!r.is_correct && r.your && <div className="answer bad"><span>Ваш ответ</span><OptionBody option={r.your} /></div>}
                 <div className="answer ok"><span>Верный ответ</span><OptionBody option={r.right} /></div>
@@ -77,12 +110,26 @@ export default function ResultScreen({ state, onState, nav }: Props) {
 
       <SubscriptionCard state={state} onState={onState} />
 
-      <button className="btn btn-ghost btn-lg" onClick={() => { saved.set(null); nav('/') }}>Пройти тест заново</button>
       <p className="fineprint">
         Результат — ориентировочная оценка по короткому тесту. Он не заменяет профессиональную
         психометрическую диагностику.
       </p>
     </main>
+  )
+}
+
+function History({ items }: { items: Result['history'] }) {
+  const max = Math.max(...items.map((i) => i.iq), 130)
+  return (
+    <ol className="history" aria-label="История прохождений">
+      {items.slice(-8).map((item) => (
+        <li key={item.id} className={item.current ? 'current' : ''}>
+          <b>{item.iq}</b>
+          <div style={{ height: `${Math.max(12, ((item.iq - 50) / (max - 50)) * 100)}%` }} />
+          <span>{new Date(item.finished_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</span>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -114,7 +161,7 @@ function SubscriptionCard({ state, onState }: Pick<Props, 'state' | 'onState'>) 
             <div className="price-row"><span>Следующее списание</span><span>{date(sub.current_period_end)}, {price(state.plan.amount)}</span></div>
             {confirming ? (
               <div className="confirm">
-                <p>Отменить подписку? Отчёт останется доступен до {date(sub.current_period_end)}.</p>
+                <p>Отменить подписку? Отчёты и новые прохождения останутся доступны до {date(sub.current_period_end)}.</p>
                 <div className="confirm-actions">
                   <button className="btn btn-danger" onClick={cancel} disabled={busy}>{busy ? 'Отменяем…' : 'Да, отменить'}</button>
                   <button className="btn btn-ghost" onClick={() => setConfirming(false)} disabled={busy}>Оставить</button>
@@ -128,10 +175,10 @@ function SubscriptionCard({ state, onState }: Pick<Props, 'state' | 'onState'>) 
         ) : (
           <>
             <div className="price-row"><span>Статус</span><b>Отменена</b></div>
-            <p className="muted">Списаний больше не будет. Отчёт доступен до {date(sub.current_period_end)}.</p>
+            <p className="muted">Списаний больше не будет. Отчёты и новые прохождения доступны до {date(sub.current_period_end)}.</p>
           </>
         )}
-        {state.email && <p className="fineprint">Оформлена на {state.email}. Оплата — демо, деньги не списывались.</p>}
+        <p className="fineprint">Оплата — демо, деньги не списывались.</p>
       </div>
     </section>
   )

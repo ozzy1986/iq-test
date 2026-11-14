@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, price, saved, type Plan } from '../api'
+import { api, price, saved, type Offer } from '../api'
 import type { Nav } from '../App'
 import { FigCell } from '../Figure'
 import { useTitle } from '../ui'
@@ -7,13 +7,15 @@ import { useTitle } from '../ui'
 type Props = { nav: Nav; start: () => void; starting: boolean; error: string }
 
 export default function Landing({ nav, start, starting, error }: Props) {
-  const [plan, setPlan] = useState<Plan | null>(null)
+  const [offer, setOffer] = useState<Offer | null>(null)
+  const questions = offer?.questions ?? 30
+  const minutes = offer?.minutes ?? 15
   const resumeId = saved.get()
-  useTitle('Узнайте свой IQ за 10 минут')
+  useTitle('Узнайте свой IQ')
 
   useEffect(() => {
     api.track('landing_view')
-    api.plan().then((p) => setPlan(p.plan)).catch(() => {})
+    api.plan().then(setOffer).catch(() => {})
   }, [])
 
   const cta = (
@@ -26,8 +28,8 @@ export default function Landing({ nav, start, starting, error }: Props) {
     <main className="screen landing">
       <section className="hero">
         <p className="chip chip-accent">Бесплатно · без регистрации</p>
-        <h1 className="title-hero">Узнайте свой IQ за 10 минут</h1>
-        <p className="lead">12 заданий на числовые ряды, аналогии, логику и визуальные паттерны — от простых к сложным.</p>
+        <h1 className="title-hero">Узнайте свой IQ за {minutes} минут</h1>
+        <p className="lead">{questions} заданий на визуальные матрицы, числовые ряды, логику и аналогии. Сложность растёт от вопроса к вопросу, а набор заданий каждый раз новый.</p>
 
         <div className="hero-art" aria-hidden="true">
           <FigCell fig={{ shape: 'circle', count: 1, fill: 'solid', rot: 0 }} />
@@ -44,14 +46,14 @@ export default function Landing({ nav, start, starting, error }: Props) {
           {error && <p className="alert-error" role="alert">{error}</p>}
           <p className="fineprint">
             Тест бесплатный. Подробный отчёт с результатом — по подписке
-            {plan ? ` ${price(plan.amount)} в месяц` : ''}, отмена в один клик.
+            {offer ? ` ${price(offer.plan.amount)} в месяц` : ''}, отмена в один клик.
           </p>
         </div>
       </section>
 
       <ul className="facts">
-        <li><b>12</b><span>вопросов</span></li>
-        <li><b>~10</b><span>минут</span></li>
+        <li><b>{questions}</b><span>вопросов</span></li>
+        <li><b>~{minutes}</b><span>минут</span></li>
         <li><b>4</b><span>навыка</span></li>
       </ul>
 
@@ -60,7 +62,7 @@ export default function Landing({ nav, start, starting, error }: Props) {
         <ol>
           <li className="card"><h3>Проходите тест</h3><p>Один вопрос на экран, к прошлым можно вернуться. Прогресс сохраняется.</p></li>
           <li className="card"><h3>Видите, что будет в отчёте</h3><p>До оплаты показываем состав отчёта и все условия подписки.</p></li>
-          <li className="card"><h3>Получаете результат</h3><p>IQ, процентиль, профиль по четырём навыкам и разбор каждого вопроса.</p></li>
+          <li className="card"><h3>Получаете результат</h3><p>IQ по стандартной шкале с погрешностью, процентиль, профиль по четырём навыкам и разбор каждого вопроса.</p></li>
         </ol>
         <div className="cta-block">{cta}</div>
       </section>

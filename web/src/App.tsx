@@ -34,7 +34,7 @@ export default function App() {
     setStartError('')
     try {
       const s = await api.create()
-      saved.set(s.id)
+      saved.remember(s)
       nav(`/t/${s.id}`)
     } catch (e) {
       setStartError((e as Error).message)
@@ -57,7 +57,7 @@ export default function App() {
       </header>
       <ErrorBoundary key={path}>
         {match
-          ? <Flow key={match[1]} id={match[1]} checkout={!!match[2]} nav={nav} />
+          ? <Flow key={match[1]} id={match[1]} checkout={!!match[2]} nav={nav} start={start} starting={starting} />
           : <Landing nav={nav} start={start} starting={starting} error={startError} />}
       </ErrorBoundary>
     </div>
@@ -65,12 +65,14 @@ export default function App() {
 }
 
 /** Экран определяется состоянием на сервере — обновление страницы ничего не сбрасывает. */
-function Flow({ id, checkout, nav }: { id: string; checkout: boolean; nav: Nav }) {
+type FlowProps = { id: string; checkout: boolean; nav: Nav; start: () => void; starting: boolean }
+
+function Flow({ id, checkout, nav, start, starting }: FlowProps) {
   const [state, setState] = useState<SessionState | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
 
   useEffect(() => {
-    api.get(id).then((s) => { saved.set(s.id); setState(s) }).catch((e: ApiError) => {
+    api.get(id).then((s) => { saved.remember(s); setState(s) }).catch((e: ApiError) => {
       if (e.status === 404) saved.set(null)
       setError(e)
     })
@@ -89,7 +91,7 @@ function Flow({ id, checkout, nav }: { id: string; checkout: boolean; nav: Nav }
   if (!state) return <Status />
 
   if (state.status === 'started') return <Quiz state={state} onFinished={setState} />
-  if (state.access) return <ResultScreen state={state} onState={setState} nav={nav} />
+  if (state.access) return <ResultScreen state={state} onState={setState} retake={start} retaking={starting} />
   if (checkout) return <Checkout state={state} onPaid={(s) => { setState(s); nav(`/t/${id}`, true) }} nav={nav} />
-  return <Paywall state={state} nav={nav} />
+  return <Paywall state={state} onState={setState} nav={nav} />
 }
